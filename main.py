@@ -442,6 +442,9 @@ def swap_dates(employee_id_1, employee_id_2, date_employee_1):
 
     return {"message":f"Values swapped successfully. Modified data saved to {output_path}"}
 
+@app.route('/')
+def index():
+    return 'Hello from Vishal!'
 
 @app.route("/accept", methods=["GET"])
 def accept_request():
