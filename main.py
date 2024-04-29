@@ -98,8 +98,8 @@ def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
 
                 # Get email addresses corresponding to employee IDs
                 requested_Employee_email = emp_df.loc[emp_df['employee_id'] == int(employee_id_1), "Email ID"].iloc[0]
-                email = "vishal.d2019cse@sece.ac.in"
-                password = "Dkvm@2016"
+                email = "rotavrts@gmail.com"
+                password = "rhdd gtal zuso gwnc"
                 rec_email = requested_Employee_email
                 subject = "Shift Swap Notification"
                 msg = f'Dear {employee_name_1}, \n\nThis is to inform you that your shift request has been declined on {month_abbr} - {date_employee_1} by {employee_name_2} with \nEmployee ID: {employee_id_2}\n\nRegards,\nVirtusa'
@@ -195,8 +195,8 @@ def send_email_with_buttons(sender_email, receiver_email, sender_password, accep
 
 
 def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
-    sender_email = "vishal.d2019cse@sece.ac.in"
-    sender_password = "Dkvm@2016"
+    sender_email = "rotavrts@gmail.com"
+    sender_password = "rhdd gtal zuso gwnc"
     accept_link = "https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/accept"
     decline_link = "https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/decline"
     # Read Excel file into a DataFrame
