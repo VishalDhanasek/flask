@@ -1,4 +1,4 @@
-from flask import Flask,request
+from flask import Flask, jsonify,request
 from flask_cors import CORS
 import pandas as pd
 import re
@@ -13,6 +13,9 @@ from email.mime.multipart import MIMEMultipart
 import requests
 import time
 import threading
+from aiohttp import ClientSession
+import asyncio
+
 
 
 
@@ -30,16 +33,18 @@ shifts = ["Morning", "Afternoon", "Night"]
 
 approval=None
 
-def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
+async def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
     timestamp = datetime.now()  # Get current timestamp
-    time.sleep(30)
+    await asyncio.sleep(30)
     approval_status=None
 
-    response = requests.get("https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/approval")
-    if response.status_code == 200:
-        approval_status=response.json().get("approval")
-    else:
-        print("Error fetching approval status:", response.status_code)
+    async with ClientSession() as session:
+        async with session.get("http://localhost:5002/approval") as response:
+            if response.status == 200:
+                json_response = await response.json()
+                approval_status = json_response.get("approval")
+            else:
+                print("Error fetching approval status:", response.status)
             
     # Read Excel file into a DataFrame
     df = pd.read_excel("modified_roster.xlsx")
@@ -168,7 +173,7 @@ def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
             break
 
 
-def send_email_with_buttons(sender_email, receiver_email, sender_password, accept_link, decline_link,employee_id_1,employee_id_2,date_employee_1,month):
+async def send_email_with_buttons(sender_email, receiver_email, sender_password, accept_link, decline_link,employee_id_1,employee_id_2,date_employee_1,month):
     # Read Excel file into a DataFrame
     df = pd.read_excel("modified_roster.xlsx")
 
@@ -231,11 +236,11 @@ def send_email_with_buttons(sender_email, receiver_email, sender_password, accep
 
 
 
-def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
+async def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
     sender_email = "rotavrts@gmail.com"
     sender_password = "rhdd gtal zuso gwnc"
-    accept_link = "https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/accept"
-    decline_link = "https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/decline"
+    accept_link = "http://localhost:5002/accept"
+    decline_link = "http://localhost:5002/decline"
     # Read Excel file into a DataFrame
     df = pd.read_excel("modified_roster.xlsx")
 
@@ -277,12 +282,10 @@ def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
     employee_name_1 = emp_df.loc[emp_df['employee_id'] == int(employee_id_1), "employee_name"].iloc[0]
     employee_name_2 = emp_df.loc[emp_df['employee_id'] == int(employee_id_2), "employee_name"].iloc[0]
 
-    send_email_with_buttons(sender_email, receiver_email,sender_password, accept_link, decline_link,employee_id_1,employee_id_2,date_employee_1,month)
+    await send_email_with_buttons(sender_email, receiver_email,sender_password, accept_link, decline_link,employee_id_1,employee_id_2,date_employee_1,month)
 
     # Start a new thread to send email and wait for response
-    email_thread = threading.Thread(target=send_email_and_wait,
-                                    args=(employee_id_1, employee_id_2, date_employee_1))
-    email_thread.start()
+    await send_email_and_wait(employee_id_1, employee_id_2, date_employee_1)
 
     # Continue running the chatbot without waiting for the email response
     return{"Message":"Email sent. Waiting for response in the background."}
@@ -358,7 +361,7 @@ def available_dates():
             print(f"{day_of_month}", end="   ")
             date_list.append(day_of_month)
 
-    return {"available_dates":date_list}
+    return {"Message" : "available_dates","available_dates":date_list}
 
 # Function to save responses to Excel file
 def save_to_excel_employees(responses):
@@ -400,6 +403,7 @@ def save_to_excel_employees(responses):
 
                     if leave_request[iterator] >= 2:
                         print(f"Preferred date {date} is already taken. Please choose another date.")
+                        available_dates()
                         return available_dates()
 
         if responses['employee_id'] in existing_data['employee_id'].values:
@@ -676,6 +680,22 @@ def send_email_to_cab_service_about_requester(month_abbr,date_employee_1,employe
     server.sendmail(email, cab_email, message.as_string())
     server.quit()
 
+UPLOAD_FOLDER = 'C:\\Users\\veeru\\Downloads\\upload'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+UPLOAD_FOLDER1 = 'C:\\Users\\veeru\\Downloads\\upload1'
+if not os.path.exists(UPLOAD_FOLDER1):
+    os.makedirs(UPLOAD_FOLDER1)
+app.config['UPLOAD_FOLDER1'] = UPLOAD_FOLDER1
+
+UPLOAD_FOLDER2 = 'C:\\Users\\veeru\\Downloads\\upload2'
+if not os.path.exists(UPLOAD_FOLDER2):
+    os.makedirs(UPLOAD_FOLDER2)
+app.config['UPLOAD_FOLDER2'] = UPLOAD_FOLDER2
+
 @app.route("/accept", methods=["GET"])
 def accept_request():
     global approval
@@ -695,16 +715,19 @@ def get_approval_status():
     return {"approval": approval}
 
 @app.route('/main', methods=['POST'])
-def main():
+async def main():
     item = request.get_json()
     print("item -- ",item)
     if 'employee_id' in item:
         if 'Planned_Leave_1' in item:
             return save_to_excel_employees(item)
         else:
-            return swap_pre_process(item['employee_id'],item['swap_id'],item['swap_date_1'])
+            asyncio.create_task(swap_pre_process(item['employee_id'], item['swap_id'], item['swap_date_1']))
+            return jsonify({"Message": "Email sent. Waiting for response in the background."})
+
     else:
-        return save_to_excel_admin(item)
+        # return save_to_excel_admin(item)
+        return {"Message":"None"}
 
 @app.route('/employee_login', methods=['POST'])
 def employee_login():
@@ -785,6 +808,134 @@ def employee_available_for_swap_shift():
         return({"message":'\n\n'.join(employee_list)})
     else:
         return{"message":"null"}
+
+@app.route('/check_consecutive_days',methods=['POST'])
+def check_consecutive_days():
+    item = request.get_json()
+    print("item -- ",item)
+    date_employee_1 = item['swap_date_1'] 
+    shift_to_swap = item['shift_to_swap']
+    employee_id_1 = item['employee_id']
+    flag=False
+    df = pd.read_excel("modified_roster.xlsx")
+    admin_df = pd.read_excel("admin.xlsx")
+    month = admin_df.loc[0, "Month"]
+    month_abbr = calendar.month_abbr[int(month)]
+
+
+    if(shift_to_swap!='O'):
+        # Initialize variables to store consecutive working days count and previous and next shifts
+        consecutive_days_before = 0
+        consecutive_days_after = 0
+        previous_shift = None
+        next_shift = None
+        next_shift_index = None
+
+        # Find the index of the selected date
+        selected_date_index = df.columns.get_loc(month_abbr+" "+date_employee_1)
+        print(selected_date_index)
+        # Locate the row corresponding to the employee ID
+        employee_row = df[df['Employee ID'] == int(employee_id_1)]
+        print("employee_row", employee_row)
+        # Get the index of the row for the employee
+        employee_index = employee_row.index[0]
+
+
+        # Iterate over the roster to count consecutive working days before the selected date
+        for i in range(selected_date_index - 1,1,-1):
+            shift = df.iloc[employee_index, i]
+            print(shift)
+            if shift != 'O' and df.iloc[employee_index,i] in ['M', 'A', 'N', 'G']:
+                consecutive_days_before += 1
+            else:
+                break
+
+        # Iterate over the roster to count consecutive working days after the selected date
+        for i in range(selected_date_index + 1, len(df.columns)-2):
+            shift = df.iloc[employee_index, i]
+            print(shift)
+            if shift != 'O':
+                consecutive_days_after += 1
+            else:
+                break
+
+        # Determine the previous shift
+        previous_shift_index = selected_date_index - 1
+        if previous_shift_index < len(df.columns) and df.iloc[employee_index, previous_shift_index] in ['M', 'A', 'N', 'G']:
+            previous_shift = df.iloc[employee_index, previous_shift_index]
+        else:
+            previous_shift_index=None
+
+        # Determine the next shift
+        next_shift_index = selected_date_index + 1
+        if next_shift_index < len(df.columns) and df.iloc[employee_index, next_shift_index] in ['M', 'A', 'N', 'G']:
+            next_shift = df.iloc[employee_index, next_shift_index]
+        else:
+            next_shift=None
+
+        # Display the count and shifts to the employee
+        total_consecutive_days = consecutive_days_before + 1 + consecutive_days_after
+        if(total_consecutive_days>5):
+            print({"message": f"You will be working consecutively for {total_consecutive_days} days."})
+            return({"message": f"You will be working consecutively for {total_consecutive_days} days. " f"\nPrevious shift: {previous_shift if previous_shift else 'None'}" f"\nNext shift: {next_shift if next_shift else 'None'}"})
+        # print(
+        #     f"Previous shift: {previous_shift if previous_shift else 'None'}, Next shift: {next_shift if next_shift else 'None'}")
+        return({"message": "null"})
+    else:
+        return({"message": "null"})
+
+
+
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return({"message": "No file part in the request"}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return ({"message": "No file selected for uploading"}), 400
+
+    if file:
+        filename = file.filename
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        return ({"message": f"File {filename} uploaded successfully"}), 200
+
+
+
+@app.route('/uploadEmployeeList', methods=['POST'])
+def upload_file1():
+    if 'file' not in request.files:
+        return({"message": "No file part in the request"}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return ({"message": "No file selected for uploading"}), 400
+
+    if file:
+        filename = file.filename
+        file.save(os.path.join(app.config['UPLOAD_FOLDER1'], filename))
+        return ({"message": f"File {filename} uploaded successfully"}), 200
+
+
+@app.route('/uploadDemand', methods=['POST'])
+def upload_demand():
+    if 'file' not in request.files:
+        return({"message": "No file part in the request"}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return ({"message": "No file selected for uploading"}), 400
+
+    if file:
+        filename = file.filename
+        file.save(os.path.join(app.config['UPLOAD_FOLDER2'], filename))
+        return ({"message": f"File {filename} uploaded successfully"}), 200
+
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5002, host='0.0.0.0')
