@@ -39,7 +39,7 @@ async def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
     approval_status=None
 
     async with ClientSession() as session:
-        async with session.get("http://localhost:5002/approval") as response:
+        async with session.get("https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/approval") as response:
             if response.status == 200:
                 json_response = await response.json()
                 approval_status = json_response.get("approval")
@@ -239,8 +239,8 @@ async def send_email_with_buttons(sender_email, receiver_email, sender_password,
 async def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
     sender_email = "rotavrts@gmail.com"
     sender_password = "rhdd gtal zuso gwnc"
-    accept_link = "http://localhost:5002/accept"
-    decline_link = "http://localhost:5002/decline"
+    accept_link = "https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/accept"
+    decline_link = "https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/decline"
     # Read Excel file into a DataFrame
     df = pd.read_excel("modified_roster.xlsx")
 
