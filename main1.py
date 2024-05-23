@@ -1,4 +1,4 @@
-from flask import Flask,request
+from flask import Flask, jsonify,request
 from flask_cors import CORS
 import pandas as pd
 import re
@@ -13,7 +13,10 @@ from email.mime.multipart import MIMEMultipart
 import requests
 import time
 import threading
-from multiprocessing import Process
+from aiohttp import ClientSession
+import asyncio
+import aiofiles
+import aiohttp
 
 
 
@@ -81,10 +84,10 @@ def warning_mail_requester(employee_id_1,total_consecutive_days,employee_name_1,
 
 approval=None
 
-def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
+async def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
     admin_df = pd.read_excel("admin.xlsx")
     month = admin_df.loc[0, "Month"]
-   
+    
     # Convert month number to three-letter abbreviation
     month_abbr = calendar.month_abbr[int(month)]
 
@@ -151,15 +154,17 @@ def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
             warning_mail_requester(employee_id_1,total_consecutive_days,employee_name_1,col_date_employee_1)
 
     timestamp = datetime.now()  # Get current timestamp
-    time.sleep(30)
+    await asyncio.sleep(30)
     approval_status=None
 
-    response = requests.get("https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/approval")
-    if response.status_code == 200:
-        approval_status=response.json().get("approval")
-    else:
-        print("Error fetching approval status:", response.status_code)
-           
+    async with aiohttp.ClientSession() as session:
+        async with session.get("http://localhost:5002/approval") as response:
+            if response.status == 200:
+                json_response = await response.json()
+                approval_status = json_response.get("approval")
+            else:
+                print("Error fetching approval status:", response.status)
+            
     # Read Excel file into a DataFrame
     df = pd.read_excel("modified_roster.xlsx")
 
@@ -192,7 +197,7 @@ def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
         # Check for the user's response
         print("approval status --> ",approval_status)
         if approval_status is not None:
-           
+            
             if approval_status == "Accepted":
                 swap_dates(employee_id_1, employee_id_2, date_employee_1)
                 swap_requests_df = swap_requests_df._append({
@@ -285,6 +290,7 @@ def send_email_and_wait(employee_id_1,employee_id_2,date_employee_1):
             swap_requests_df.to_excel("swap_request_log.xlsx", index=False)
 
             break
+        await asyncio.sleep(1)
 
 
 def send_email_with_buttons(sender_email, receiver_email, sender_password, accept_link, decline_link,employee_id_1,employee_id_2,date_employee_1,month):
@@ -415,7 +421,7 @@ def send_email_with_buttons(sender_email, receiver_email, sender_password, accep
     message["Subject"] = "Shift Swap Notification"
     message["From"] = sender_email
     message["To"] = receiver_email
-   
+    
 
     # HTML content with accept and decline buttons
     html_content = f"""
@@ -439,15 +445,15 @@ def send_email_with_buttons(sender_email, receiver_email, sender_password, accep
         server.starttls()
         server.login(sender_email, sender_password)
         server.sendmail(sender_email, receiver_email, message.as_string())
-       
+        
 
 
 
-def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
+async def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
     sender_email = "rotavrts@gmail.com"
     sender_password = "rhdd gtal zuso gwnc"
-    accept_link = "https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/accept"
-    decline_link = "https://b2411a61-a517-4ae4-9b30-5cbd4e3a793d-00-xlmxsla4v0nm.worf.replit.dev:5000/decline"
+    accept_link = "http://localhost:5002/accept"
+    decline_link = "http://localhost:5002/decline"
     # Read Excel file into a DataFrame
     df = pd.read_excel("modified_roster.xlsx")
 
@@ -482,7 +488,7 @@ def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
     if col_date_employee_1 not in df.columns or col_date_employee_2 not in df.columns:
         print("One or both of the provided dates do not exist.")
         return
-   
+    
 
     # Get email addresses corresponding to employee IDs
     receiver_email = emp_df.loc[emp_df['employee_id'] == int(employee_id_2), "Email ID"].iloc[0]
@@ -492,14 +498,7 @@ def swap_pre_process(employee_id_1,employee_id_2,date_employee_1):
     send_email_with_buttons(sender_email, receiver_email,sender_password, accept_link, decline_link,employee_id_1,employee_id_2,date_employee_1,month)
 
     # Start a new thread to send email and wait for response
-    # email_thread = threading.Thread(target=send_email_and_wait,
-    #                                 args=(employee_id_1, employee_id_2, date_employee_1))
-    # email_thread.start()
-    # response = send_email_and_wait(employee_id_1, employee_id_2, date_employee_1)
-    p = Process(target=send_email_and_wait, args=(employee_id_1, employee_id_2, date_employee_1))
-    p.start()
-    # print("response-->",response)
-
+    await (send_email_and_wait(employee_id_1, employee_id_2, date_employee_1))
     # Continue running the chatbot without waiting for the email response
     return{"Message":"Email sent. Waiting for response in the background."}
 
@@ -543,7 +542,7 @@ def is_valid_date(day):
         return 1 <= day <= num_days
     except ValueError:
         return False
-   
+    
 # Print the available dates
 def available_dates():
     leave_request = {}
@@ -836,7 +835,7 @@ def send_email_to_manager(month_abbr,date_employee_1,employee_name_1,employee_id
     else:
         shift_employee_2 = "Off"
 
-   
+    
     email = "rotavrts@gmail.com"
     password = "rhdd gtal zuso gwnc"
     manager_email = "madheshns57@gmail.com"
@@ -1004,7 +1003,9 @@ def main():
         if 'Planned_Leave_1' in item:
             return save_to_excel_employees(item)
         else:
-            return swap_pre_process(item['employee_id'],item['swap_id'],item['swap_date_1'])
+            return asyncio.run(swap_pre_process(item['employee_id'], item['swap_id'], item['swap_date_1']))
+            # return jsonify({"Message": "Email sent. Waiting for response in the background."})
+            
     else:
         return save_to_excel_admin(item)
 
@@ -1048,12 +1049,12 @@ def employee_login():
     except Exception as e:
         print("Error:", e)
         return {"Message":"false"}
-   
+    
 @app.route('/employee_available_for_swap_shift',methods=['POST'])
 def employee_available_for_swap_shift():
     item = request.get_json()
     print("item -- ",item)
-    date_employee_1 = item['swap_date_1']
+    date_employee_1 = item['swap_date_1'] 
     shift_to_swap = item['shift_to_swap']
 
     df = pd.read_excel("modified_roster.xlsx")
@@ -1092,7 +1093,7 @@ def employee_available_for_swap_shift():
 def check_consecutive_days():
     item = request.get_json()
     print("item -- ",item)
-    date_employee_1 = item['swap_date_1']
+    date_employee_1 = item['swap_date_1'] 
     shift_to_swap = item['shift_to_swap']
     employee_id_1 = item['employee_id']
     flag=False
